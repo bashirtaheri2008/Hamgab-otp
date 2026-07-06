@@ -1,27 +1,27 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, send_from_directory, request, jsonify
 from flask_cors import CORS
-import random
-import string
 import requests
+import random
 import os
 from datetime import datetime, timedelta
 import secrets
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__, static_folder='.')
 CORS(app)
 
-# تنظیمات SMS Gateway 24
-SMS_GATEWAY_URL = os.environ.get('SMS_GATEWAY_URL', 'https://api.smsgateway24.com')
-API_KEY = os.environ.get('SMS_GATEWAY_API_KEY', 'YOUR_API_KEY')
-SENDER_ID = os.environ.get('SMS_GATEWAY_SENDER_ID', 'YOUR_PHONE_NUMBER')
+# ========== کلیدهای ثابت (همانهایی که خودت داری) ==========
+TOKEN = '43b74ee7c5e883832f9d71300587c112'
+API_URL = 'https://smsgateway24.com/getdata/addsms'
+DEVICE_ID = '13068'
 
+# ========== ذخیره OTP ==========
 otp_store = {}
 
 def generate_otp():
-    return ''.join(random.choices(string.digits, k=6))
+    return str(random.randint(100000, 999999))
 
 @app.route('/')
-def serve_index():
+def home():
     return send_from_directory('.', 'index.html')
 
 @app.route('/generate-code', methods=['GET'])
@@ -37,21 +37,26 @@ def generate_code():
 
 @app.route('/send-sms', methods=['POST'])
 def send_sms():
+    phone = request.form.get('sendto', '').strip()
+    code = request.form.get('body', '').strip()
+    
+    # فرمت کردن شماره
+    if not phone.startswith('+'):
+        phone = '+93' + phone.replace('^0+', '')
+    
+    data = {
+        'token': TOKEN,
+        'sendto': phone,
+        'body': code,
+        'device_id': DEVICE_ID,
+        'sim': '1'
+    }
+    
     try:
-        sendto = request.form.get('sendto')
-        body = request.form.get('body')
-        if not sendto or not body:
-            return 'شماره و متن الزامی است', 400
-        
-        payload = {'to': sendto, 'message': body, 'sender': SENDER_ID}
-        headers = {'Authorization': f'Bearer {API_KEY}', 'Content-Type': 'application/json'}
-        response = requests.post(f'{SMS_GATEWAY_URL}/send-sms', json=payload, headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            return 'SMS ارسال شد', 200
-        return 'خطا در ارسال SMS', 500
+        response = requests.post(API_URL, data=data)
+        return response.text, response.status_code
     except Exception as e:
-        return f'خطا: {str(e)}', 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/verify-otp', methods=['POST'])
 def verify_otp():
@@ -82,4 +87,6 @@ def health():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
+    print('🚀 سرور در حال اجرا...')
+    print(f'📡 پورت: {port}')
     app.run(host='0.0.0.0', port=port, debug=False)
